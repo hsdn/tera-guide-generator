@@ -1,0 +1,11 @@
+{
+  "name": "tera-guide-generator",
+  "version": "1.0.0",
+  "description": "TERA Guide Generator",
+  "repository": "https://github.com/hsdn/tera-guide-generator",
+  "author": "HSDN <info@hsdn.org>",
+  "license": "MIT",
+  "scripts": {
+    "generator": "node generator"
+  }
+}
