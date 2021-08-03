@@ -2,14 +2,11 @@
 
 // === Begin configurations ===
 
-// Yandex translator token from "https://translate.yandex.ru/" at "window.config = { ... SID: 'my_token', ... }"
-const YT_TOKEN = "100027e1.96c84cf5.bf0d0873.47875647d22747";
-
 // Source language
 const langFrom = "ko"; // Korean
 
 // Destination language
-const langTo = "ru"; // English
+const langTo = "en"; // English
 
 // Directory of generated guides
 const dataDir = "./out";
@@ -19,7 +16,7 @@ const outDir = "./out_translated";
 
 // === End of configurations ===
 
-const got = require("got");
+const request = require("node-fetch");
 const path = require("path");
 const fs = require("fs");
 const readdir = require("util").promisify(fs.readdir);
@@ -77,7 +74,6 @@ function getStrings(strings, content) {
 }
 
 function translateStrings(strings) {
-	const yandex = new YandexTranslator(YT_TOKEN);
 	return new Promise((resolve, reject) => {
 		let i = 0, k = 0;
 		const timers = [];
@@ -87,9 +83,9 @@ function translateStrings(strings) {
 					resolve(strings);
 			} else {
 				timers.push(setTimeout(() => {
-					yandex.translate(key, { "from": langFrom, "to": langTo }).then(res => {
-						console.log(">>", k, "/", strings.size, "<<", res.text);
-						strings.set(key, res.text);
+					googleTranslate(key, langTo, langFrom).then(res => {
+						console.log(">>", k, "/", strings.size, "<<", res);
+						strings.set(key, res);
 						writeStrings(strings);
 						if (++k === strings.size)
 							resolve(strings);
@@ -117,44 +113,29 @@ function writeStrings(strings) {
 	fs.writeFileSync(path.resolve(`strings-${langFrom}-${langTo}.json`), JSON.stringify([...strings]));
 }
 
-class YandexTranslator {
-	constructor(token = false) {
-		this.headers = {
-			"user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/87.0.4280.66 Safari/537.36}",
-			"Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9",
-			"Accept-Encoding": "gzip, deflate, br",
-			"Accept-Language": "ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7",
-			"Cache-Control": "max-age=0",
-			"Sec-Fetch-Dest": "document",
-			"Sec-Fetch-Mode": "navigate",
-			"Sec-Fetch-Site": "same-origin",
-			"Sec-Fetch-User": "?1",
-			"Upgrade-Insecure-Requests": "1"
-		};
-
-		this.token = token ? this.cryptToken(token) : this.getToken();
-	}
-
-	async translate(text, options) {
-		const response = await got({
-			"url": `https://translate.yandex.net/api/v1/tr.json/translate?id=${this.token}&srv=tr-text&lang=${options.from}-${options.to}&reason=auto&format=text&text=${encodeURI(text)}`,
-			"headers": this.headers
-		});
-		return { "text": JSON.parse(response.body).text[0] };
-	}
-
-	async getToken() {
-		const response = await got({ "url": "https://translate.yandex.ru/", "headers": this.headers });
-		const match = response.body.match(/SID: '(.*?)',/i);
-		if (match)
-			return this.cryptToken(match[1]);
-		return false;
-	}
-
-	cryptToken(token) {
-		const bits = token.split(".");
-		for (let i = 0; i < bits.length; i++)
-			bits[i] = bits[i].split("").reverse().join("");
-		return `${bits.join(".")}-0-0`;
-	}
+async function googleTranslate(text, translateTo, translateFrom) {
+	const url = `${"https://translate.google.com/translate_a/single"
+		+ "?client=at&dt=t&dt=ld&dt=qca&dt=rm&dt=bd&dj=1&hl="}${translateTo}&ie=UTF-8`
+		+ "&oe=UTF-8&inputm=2&otf=2&iid=1dd3b944-fa62-4b55-b330-74909a99969e";
+	const params = new URLSearchParams();
+	params.append("sl", translateFrom);
+	params.append("tl", translateTo);
+	params.append("q", text.replace(/\|/g, "//"));
+	const response = await request(url, {
+		"method": "post",
+		"body": params,
+		"headers": {
+			"Content-Type": "application/x-www-form-urlencoded;charset=utf-8",
+			"User-Agent": "AndroidTranslate/5.3.0.RC02.130475354-53000263 5.1 phone TRANSLATE_OPM5_TEST_1"
+		}
+	});
+	const body = await response.text();
+	return new Promise((resolve, reject) => {
+		try {
+			const jsonBody = JSON.parse(body);
+			resolve(jsonBody.sentences[0].trans.replace(/\/\//g, "|"));
+		} catch (e) {
+			reject("Translate Error");
+		}
+	});
 }
